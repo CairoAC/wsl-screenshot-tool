@@ -1,0 +1,160 @@
+param(
+    [string]$SaveDirectory = "",
+    [string]$WslDistro = "auto",
+    [int]$PollingIntervalMs = 500,
+    [int]$MaxErrorCount = 10
+)
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$ErrorActionPreference = "Stop"
+$script:lastHash = ""
+$script:errorCount = 0
+
+function Get-SafeWslUsername {
+    param([string]$Distro)
+
+    $username = (wsl.exe -d $Distro -e whoami 2>$null)
+    if (-not $username) {
+        return $null
+    }
+
+    $username = $username.Trim() -replace '\x00', ''
+
+    if ($username -notmatch '^[a-z_][a-z0-9_-]{0,31}$') {
+        Write-Error "Invalid WSL username format: $username"
+        return $null
+    }
+
+    return $username
+}
+
+function Get-SafeWslDistro {
+    if ($WslDistro -ne "auto") {
+        if ($WslDistro -notmatch '^[a-zA-Z0-9_.-]+$') {
+            Write-Error "Invalid WSL distro name"
+            return $null
+        }
+        return $WslDistro
+    }
+
+    $distros = @(wsl.exe -l -q 2>$null | Where-Object {
+        $_ -and $_.Trim() -ne "" -and $_ -notlike "*docker*"
+    } | ForEach-Object {
+        $_.Trim() -replace '\s+', '' -replace '\x00', ''
+    })
+
+    if ($distros.Count -eq 0) {
+        Write-Error "No WSL distribution found"
+        return $null
+    }
+
+    return $distros[0]
+}
+
+function Get-ImageHash {
+    param([System.Drawing.Image]$Image)
+
+    $ms = $null
+    try {
+        $ms = New-Object System.IO.MemoryStream
+        $Image.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+        $bytes = $ms.ToArray()
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $hash = [BitConverter]::ToString($sha.ComputeHash($bytes)) -replace '-', ''
+        return $hash
+    } finally {
+        if ($ms) { $ms.Dispose() }
+    }
+}
+
+function Save-ClipboardImage {
+    param(
+        [string]$Directory,
+        [string]$Distro,
+        [string]$Username
+    )
+
+    $image = $null
+    $ms = $null
+
+    try {
+        if (-not [System.Windows.Forms.Clipboard]::ContainsImage()) {
+            return $null
+        }
+
+        $image = [System.Windows.Forms.Clipboard]::GetImage()
+        if (-not $image) {
+            return $null
+        }
+
+        $hash = Get-ImageHash -Image $image
+        if ($hash -eq $script:lastHash) {
+            return $null
+        }
+        $script:lastHash = $hash
+
+        $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+        $filename = "screenshot_$timestamp.png"
+        $filepath = Join-Path $Directory $filename
+
+        $image.Save($filepath, [System.Drawing.Imaging.ImageFormat]::Png)
+
+        $wslPath = "/home/$Username/.screenshots/$filename"
+        $wslPath | Set-Clipboard
+
+        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Saved: $filename"
+        Write-Host "  Path copied to clipboard: $wslPath"
+
+        return $filepath
+
+    } finally {
+        if ($ms) { $ms.Dispose() }
+        if ($image) { $image.Dispose() }
+    }
+}
+
+$distro = Get-SafeWslDistro
+if (-not $distro) {
+    Write-Error "Failed to detect WSL distribution"
+    exit 1
+}
+Write-Host "WSL Distribution: $distro"
+
+$username = Get-SafeWslUsername -Distro $distro
+if (-not $username) {
+    Write-Error "Failed to get WSL username"
+    exit 1
+}
+Write-Host "WSL Username: $username"
+
+if (-not $SaveDirectory) {
+    $SaveDirectory = "\\wsl.localhost\$distro\home\$username\.screenshots"
+}
+
+if (-not (Test-Path $SaveDirectory)) {
+    New-Item -ItemType Directory -Path $SaveDirectory -Force | Out-Null
+}
+Write-Host "Save directory: $SaveDirectory"
+Write-Host "Monitoring clipboard... (Ctrl+C to stop)"
+Write-Host ""
+
+while ($true) {
+    try {
+        Start-Sleep -Milliseconds $PollingIntervalMs
+        Save-ClipboardImage -Directory $SaveDirectory -Distro $distro -Username $username | Out-Null
+        $script:errorCount = 0
+
+    } catch {
+        $script:errorCount++
+        Write-Warning "Error: $_"
+
+        if ($script:errorCount -ge $MaxErrorCount) {
+            Write-Error "Too many consecutive errors ($MaxErrorCount). Exiting."
+            exit 1
+        }
+
+        Start-Sleep -Milliseconds 1000
+    }
+}
