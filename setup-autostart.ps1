@@ -1,8 +1,8 @@
 $scriptPath = $PSScriptRoot
-$monitorScript = Join-Path $scriptPath "screenshot-monitor.ps1"
+$vbsScript = Join-Path $scriptPath "run-hidden.vbs"
 
-if (-not (Test-Path $monitorScript)) {
-    Write-Error "screenshot-monitor.ps1 not found in $scriptPath"
+if (-not (Test-Path $vbsScript)) {
+    Write-Error "run-hidden.vbs not found in $scriptPath"
     exit 1
 }
 
@@ -14,7 +14,7 @@ if ($existingTask) {
     Write-Host "Removed existing task"
 }
 
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -File `"$monitorScript`""
+$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbsScript`""
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero)
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
