@@ -23,7 +23,7 @@ This tool fixes it:
 1. Clone the repo somewhere in Windows (not in WSL):
 ```powershell
 cd C:\Users\YourUsername
-git clone https://github.com/astridlyre/wsl-screenshot-tool.git
+git clone https://github.com/CairoAC/wsl-screenshot-tool.git
 ```
 
 2. Create the screenshots directory in WSL:
