@@ -15,11 +15,13 @@ if ($existingTask) {
 }
 
 $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbsScript`""
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+$triggerLogon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$triggerStartup = New-ScheduledTaskTrigger -AtStartup
+$triggerStartup.Delay = "PT30S"
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -DontStopOnIdleEnd -MultipleInstances IgnoreNew
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description "Monitors clipboard for screenshots and saves to WSL" | Out-Null
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($triggerLogon, $triggerStartup) -Settings $settings -Principal $principal -Description "Monitors clipboard for screenshots and saves to WSL" | Out-Null
 
 Start-ScheduledTask -TaskName $taskName
 
