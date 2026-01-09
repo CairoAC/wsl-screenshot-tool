@@ -16,6 +16,7 @@ if ($existingTask) {
 
 $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbsScript`""
 $triggerLogon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$triggerLogon.Delay = "PT30S"
 $triggerStartup = New-ScheduledTaskTrigger -AtStartup
 $triggerStartup.Delay = "PT30S"
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -DontStopOnIdleEnd -MultipleInstances IgnoreNew

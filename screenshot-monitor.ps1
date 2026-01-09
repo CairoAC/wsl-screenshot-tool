@@ -2,7 +2,8 @@ param(
     [string]$SaveDirectory = "",
     [string]$WslDistro = "auto",
     [int]$PollingIntervalMs = 500,
-    [int]$MaxErrorCount = 10
+    [int]$MaxErrorCount = 10,
+    [int]$WslStartupTimeoutSeconds = 300
 )
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -11,6 +12,41 @@ Add-Type -AssemblyName System.Drawing
 $ErrorActionPreference = "Stop"
 $script:lastHash = ""
 $script:errorCount = 0
+
+function Wait-ForWslReady {
+    param([int]$TimeoutSeconds)
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $attempt = 0
+    $startAttempted = $false
+
+    Write-Host "Checking WSL status..."
+
+    while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        $attempt++
+        try {
+            $result = wsl.exe --status 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "WSL is ready after $attempt attempts ($([int]$stopwatch.Elapsed.TotalSeconds)s)"
+                return $true
+            }
+        } catch {}
+
+        if (-not $startAttempted -and $attempt -ge 3) {
+            Write-Host "WSL not running, starting it..."
+            Start-Process -FilePath "wsl.exe" -ArgumentList "-e", "true" -WindowStyle Hidden
+            $startAttempted = $true
+        }
+
+        if ($attempt % 10 -eq 0) {
+            Write-Host "Still waiting for WSL... (attempt $attempt, $([int]$stopwatch.Elapsed.TotalSeconds)s elapsed)"
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    Write-Host "Timeout waiting for WSL after $TimeoutSeconds seconds"
+    return $false
+}
 
 function Get-SafeWslUsername {
     param([string]$Distro)
@@ -113,6 +149,11 @@ function Save-ClipboardImage {
         if ($ms) { $ms.Dispose() }
         if ($image) { $image.Dispose() }
     }
+}
+
+if (-not (Wait-ForWslReady -TimeoutSeconds $WslStartupTimeoutSeconds)) {
+    Write-Error "WSL did not become ready within $WslStartupTimeoutSeconds seconds"
+    exit 1
 }
 
 $distro = Get-SafeWslDistro
