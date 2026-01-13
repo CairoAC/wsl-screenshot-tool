@@ -192,8 +192,24 @@ while ($true) {
         Write-Warning "Error: $_"
 
         if ($script:errorCount -ge $MaxErrorCount) {
-            Write-Error "Too many consecutive errors ($MaxErrorCount). Exiting."
-            exit 1
+            Write-Warning "Too many errors. Checking if WSL is still running..."
+
+            if (-not (Test-Path $SaveDirectory)) {
+                Write-Host "WSL directory not accessible. Restarting WSL..."
+                Start-Process -FilePath "wsl.exe" -ArgumentList "-e", "true" -WindowStyle Hidden
+                Start-Sleep -Seconds 10
+
+                if (Test-Path $SaveDirectory) {
+                    Write-Host "WSL recovered. Resuming monitoring."
+                    $script:errorCount = 0
+                } else {
+                    Write-Host "WSL still not ready. Waiting..."
+                    Start-Sleep -Seconds 30
+                    $script:errorCount = 0
+                }
+            } else {
+                $script:errorCount = 0
+            }
         }
 
         Start-Sleep -Milliseconds 1000
