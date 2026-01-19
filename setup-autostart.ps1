@@ -19,10 +19,22 @@ $triggerLogon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $triggerLogon.Delay = "PT30S"
 $triggerStartup = New-ScheduledTaskTrigger -AtStartup
 $triggerStartup.Delay = "PT30S"
+
+$triggerResume = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace Root/Microsoft/Windows/TaskScheduler | New-CimInstance -ClientOnly
+$triggerResume.Enabled = $true
+$triggerResume.Delay = "PT10S"
+$triggerResume.Subscription = '<QueryList><Query Id="0" Path="System"><Select Path="System">*[System[Provider[@Name="Microsoft-Windows-Power-Troubleshooter"] and EventID=1]]</Select></Query></QueryList>'
+
+$triggerUnlock = Get-CimClass -ClassName MSFT_TaskSessionStateChangeTrigger -Namespace Root/Microsoft/Windows/TaskScheduler | New-CimInstance -ClientOnly
+$triggerUnlock.Enabled = $true
+$triggerUnlock.Delay = "PT5S"
+$triggerUnlock.StateChange = 8
+$triggerUnlock.UserId = $env:USERNAME
+
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -DontStopOnIdleEnd -MultipleInstances IgnoreNew
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($triggerLogon, $triggerStartup) -Settings $settings -Principal $principal -Description "Monitors clipboard for screenshots and saves to WSL" | Out-Null
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($triggerLogon, $triggerStartup, $triggerResume, $triggerUnlock) -Settings $settings -Principal $principal -Description "Monitors clipboard for screenshots and saves to WSL" | Out-Null
 
 Start-ScheduledTask -TaskName $taskName
 
